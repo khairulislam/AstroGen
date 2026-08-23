@@ -8,6 +8,7 @@ AstroGen is a lightweight library of generative-model cores for astronomy data.
 - [DDPM](#ddpm)
 - [DeepLense VAE](#deeplense-vae)
 - [Super-Resolution DDPM](#super-resolution-ddpm)
+- [Denoising DDPM](#denoising-ddpm)
 - [Resources](#resources)
 - [Citations](#citations)
 
@@ -112,6 +113,31 @@ low_resolution = torch.rand(8, 1, 32, 32) * 2 - 1
 high_resolution = torch.rand(8, 1, 64, 64) * 2 - 1
 loss = model(low_resolution, high_resolution)
 samples = model.sample(low_resolution, image_size=64)
+```
+
+## Denoising DDPM
+
+`DenoisingDDPM` restores a corrupted lens image with a channel-conditioned
+`DDPM`, reusing the same conditioning path as
+[Super-Resolution DDPM](#super-resolution-ddpm): the corrupted image is
+concatenated, channel-wise, with the noisy clean image at every denoising
+step. Unlike super-resolution, corrupted and clean images share the same
+spatial size, so no resizing is applied.
+
+Corrupted and clean images must have the same channel count and values
+normalized to approximately `[-1, 1]`. Corruption (e.g. Gaussian noise plus
+blur, following family C's super-resolution recipe) is applied by the caller
+before training.
+
+```python
+import torch
+from astrogen.tasks import DenoisingDDPM
+
+model = DenoisingDDPM()
+clean = torch.rand(8, 1, 64, 64) * 2 - 1
+corrupted = clean + 0.1 * torch.randn_like(clean)
+loss = model(corrupted, clean)
+samples = model.sample(corrupted)
 ```
 
 ## Resources
