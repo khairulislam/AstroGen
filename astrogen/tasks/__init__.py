@@ -1,5 +1,3 @@
-"""Task-level generative architectures."""
+"""Task-specific meta-architectures."""
 
-from .lens_generation import LensImageDDPM
-
-__all__ = ["LensImageDDPM"]
+__all__: list[str] = []

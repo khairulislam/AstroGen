@@ -1,74 +1,71 @@
-"""Denoising diffusion probabilistic model utilities."""
+# Paper: https://arxiv.org/abs/2006.11239
+# Reference: https://github.com/ML4SCI/DeepLense/blob/main/Difflense_Aleksandr_Duplinskii/Unconditional_diffusion/model_grav.py
+"""Unconditional gravitational-lens image generation with a DDPM."""
+
+import math
 
 import torch
+from diffusers import DDPMScheduler, UNet2DModel
 from torch import nn
-from torch.nn import functional as functional
+from torch.nn import functional
 
 
-class GaussianDiffusion(nn.Module):
-    """A Gaussian DDPM noise process with an epsilon-prediction objective."""
+class DDPM(nn.Module):
+    """An unconditional DDPM baseline for normalized lens images.
+
+    Uses a vanilla diffusers U-Net and noise scheduler, since this baseline adds
+    no architecture beyond what diffusers already provides. Images passed to
+    :meth:`forward` must have shape ``(batch, image_channels, height, width)``
+    and values normalized to approximately ``[-1, 1]``.
+    """
 
     def __init__(
         self,
+        image_channels: int = 1,
+        base_channels: int = 32,
         timesteps: int = 1_000,
-        beta_start: float = 1e-4,
-        beta_end: float = 2e-2,
+        unet_kwargs: dict | None = None,
+        scheduler_kwargs: dict | None = None,
     ) -> None:
         super().__init__()
-        if timesteps < 2:
-            raise ValueError("timesteps must be at least 2")
-        if not 0 < beta_start < beta_end < 1:
-            raise ValueError("betas must satisfy 0 < beta_start < beta_end < 1")
+        norm_num_groups = math.gcd(base_channels, 32)
+        unet_config = dict(
+            in_channels=image_channels,
+            out_channels=image_channels,
+            layers_per_block=1,
+            block_out_channels=(base_channels, base_channels * 2, base_channels * 4),
+            down_block_types=("DownBlock2D", "DownBlock2D", "DownBlock2D"),
+            up_block_types=("UpBlock2D", "UpBlock2D", "UpBlock2D"),
+            norm_num_groups=norm_num_groups,
+        )
+        unet_config.update(unet_kwargs or {})
+        self.unet = UNet2DModel(**unet_config)
 
-        betas = torch.linspace(beta_start, beta_end, timesteps)
-        alphas = 1 - betas
-        alpha_bars = torch.cumprod(alphas, dim=0)
-        self.timesteps = timesteps
-        self.register_buffer("betas", betas)
-        self.register_buffer("alphas", alphas)
-        self.register_buffer("alpha_bars", alpha_bars)
+        scheduler_config = dict(num_train_timesteps=timesteps)
+        scheduler_config.update(scheduler_kwargs or {})
+        self.scheduler = DDPMScheduler(**scheduler_config)
 
-    def noise_images(
-        self,
-        images: torch.Tensor,
-        timesteps: torch.Tensor,
-        noise: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Add noise to images at the given diffusion timesteps."""
-        if images.ndim != 4:
-            raise ValueError("images must have shape (batch, channels, height, width)")
-        if timesteps.shape != (images.shape[0],):
-            raise ValueError("timesteps must have shape (batch,)")
-        if noise is None:
-            noise = torch.randn_like(images)
-        if noise.shape != images.shape:
-            raise ValueError("noise must have the same shape as images")
-
-        alpha_bars = self.alpha_bars[timesteps].view(-1, 1, 1, 1)
-        noised_images = alpha_bars.sqrt() * images + (1 - alpha_bars).sqrt() * noise
-        return noised_images, noise
-
-    def loss(self, denoiser: nn.Module, images: torch.Tensor) -> torch.Tensor:
-        """Return the epsilon-prediction loss for a batch of normalized images."""
-        timesteps = torch.randint(self.timesteps, (images.shape[0],), device=images.device)
-        noised_images, noise = self.noise_images(images, timesteps)
-        return functional.mse_loss(denoiser(noised_images, timesteps), noise)
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
+        """Return the DDPM training loss for a batch of lens images."""
+        noise = torch.randn_like(images)
+        timesteps = torch.randint(
+            self.scheduler.config.num_train_timesteps, (images.shape[0],), device=images.device
+        )
+        noised_images = self.scheduler.add_noise(images, noise, timesteps)
+        predicted_noise = self.unet(noised_images, timesteps).sample
+        return functional.mse_loss(predicted_noise, noise)
 
     @torch.no_grad()
-    def sample(self, denoiser: nn.Module, shape: tuple[int, int, int, int]) -> torch.Tensor:
-        """Generate images of ``shape`` by ancestral DDPM sampling."""
-        if len(shape) != 4:
-            raise ValueError("shape must be (batch, channels, height, width)")
-
-        was_training = denoiser.training
-        denoiser.eval()
-        images = torch.randn(shape, device=self.betas.device)
-        for step in range(self.timesteps - 1, -1, -1):
-            timestep = torch.full((shape[0],), step, device=images.device, dtype=torch.long)
-            predicted_noise = denoiser(images, timestep)
-            alpha = self.alphas[step]
-            alpha_bar = self.alpha_bars[step]
-            mean = (images - (1 - alpha) / (1 - alpha_bar).sqrt() * predicted_noise) / alpha.sqrt()
-            images = mean if step == 0 else mean + self.betas[step].sqrt() * torch.randn_like(images)
-        denoiser.train(was_training)
+    def sample(self, count: int, image_size: int = 64) -> torch.Tensor:
+        """Sample ``count`` generated single-channel lens images."""
+        was_training = self.unet.training
+        self.unet.eval()
+        device = next(self.unet.parameters()).device
+        images = torch.randn(
+            count, self.unet.config.in_channels, image_size, image_size, device=device
+        )
+        for timestep in self.scheduler.timesteps:
+            predicted_noise = self.unet(images, timestep).sample
+            images = self.scheduler.step(predicted_noise, timestep, images).prev_sample
+        self.unet.train(was_training)
         return images

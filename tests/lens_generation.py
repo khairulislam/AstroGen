@@ -1,23 +1,10 @@
 import torch
 
-from astrogen.models import GaussianDiffusion
-from astrogen.tasks import LensImageDDPM
-
-
-def test_noise_images_follows_the_schedule() -> None:
-    diffusion = GaussianDiffusion(timesteps=4)
-    images = torch.ones(2, 1, 8, 8)
-    timesteps = torch.tensor([0, 3])
-
-    noised_images, noise = diffusion.noise_images(images, timesteps, torch.zeros_like(images))
-
-    assert torch.equal(noise, torch.zeros_like(images))
-    expected = diffusion.alpha_bars[timesteps].sqrt().view(2, 1, 1, 1)
-    assert torch.allclose(noised_images, expected.expand_as(images))
+from astrogen.models import DeepLenseVAE, DDPM
 
 
 def test_lens_ddpm_trains_and_samples() -> None:
-    model = LensImageDDPM(base_channels=8, timesteps=3)
+    model = DDPM(base_channels=8, timesteps=3)
     images = torch.randn(2, 1, 16, 16).clamp(-1, 1)
 
     loss = model(images)
@@ -27,3 +14,18 @@ def test_lens_ddpm_trains_and_samples() -> None:
     assert loss.isfinite()
     assert samples.shape == images.shape
     assert torch.isfinite(samples).all()
+
+
+def test_deeplense_vae_trains_and_samples() -> None:
+    model = DeepLenseVAE(latent_dimension=8, base_channels=2)
+    images = torch.rand(2, 1, 64, 64)
+
+    loss = model.loss(images)
+    loss.backward()
+    samples = model.sample(2)
+
+    assert loss.isfinite()
+    assert samples.shape == images.shape
+    assert torch.isfinite(samples).all()
+    assert samples.min() >= 0
+    assert samples.max() <= 1

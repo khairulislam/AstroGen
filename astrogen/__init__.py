@@ -1,7 +1,5 @@
 """Generative-model building blocks for astronomy data."""
 
-from .models.ddpm import GaussianDiffusion
-from .models.unet import TimeConditionedUNet2D
-from .tasks.lens_generation import LensImageDDPM
+from .models.ddpm import DDPM
 
-__all__ = ["GaussianDiffusion", "LensImageDDPM", "TimeConditionedUNet2D"]
+__all__ = ["DDPM"]
