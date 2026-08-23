@@ -2,14 +2,11 @@
 # Reference: https://github.com/ML4SCI/DeepLense/blob/main/Super_Resolution_Atal_Gupta/models/cgdpm.ipynb
 """Diffusion-based super-resolution for gravitational-lens images."""
 
-import math
-
 import torch
-from diffusers import DDPMScheduler, UNet2DModel
 from torch import nn
 from torch.nn import functional
 
-from astrogen.models import DDPM
+from astrogen.models import build_conditional_ddpm
 
 
 class SuperResolutionDDPM(nn.Module):
@@ -31,23 +28,8 @@ class SuperResolutionDDPM(nn.Module):
         scheduler_kwargs: dict | None = None,
     ) -> None:
         super().__init__()
-        unet_config = dict(
-            in_channels=image_channels * 2,
-            out_channels=image_channels,
-            layers_per_block=1,
-            block_out_channels=(base_channels, base_channels * 2, base_channels * 4),
-            down_block_types=("DownBlock2D", "DownBlock2D", "DownBlock2D"),
-            up_block_types=("UpBlock2D", "UpBlock2D", "UpBlock2D"),
-            norm_num_groups=math.gcd(base_channels, 32),
-        )
-        unet_config.update(unet_kwargs or {})
-        scheduler_config = dict(num_train_timesteps=timesteps)
-        scheduler_config.update(scheduler_kwargs or {})
-        self.ddpm = DDPM(
-            UNet2DModel(**unet_config),
-            DDPMScheduler(**scheduler_config),
-            image_channels=image_channels,
-            condition_channels=image_channels,
+        self.ddpm = build_conditional_ddpm(
+            image_channels, base_channels, timesteps, "2d", unet_kwargs, scheduler_kwargs
         )
 
     @staticmethod

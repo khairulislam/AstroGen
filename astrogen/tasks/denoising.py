@@ -5,13 +5,10 @@
 # `spectral_denoising` config
 """Conditional DDPM denoising for gravitational-lens images and spectra."""
 
-import math
-
 import torch
-from diffusers import DDPMScheduler, UNet1DModel, UNet2DModel
 from torch import nn
 
-from astrogen.models import DDPM
+from astrogen.models import build_conditional_ddpm
 
 
 class DenoisingDDPM(nn.Module):
@@ -40,28 +37,8 @@ class DenoisingDDPM(nn.Module):
         scheduler_kwargs: dict | None = None,
     ) -> None:
         super().__init__()
-        if dimensionality not in ("1d", "2d"):
-            raise ValueError(f"dimensionality must be '1d' or '2d', got {dimensionality!r}")
-        unet_cls = UNet1DModel if dimensionality == "1d" else UNet2DModel
-        block = "DownBlock1D" if dimensionality == "1d" else "DownBlock2D"
-        up_block = "UpBlock1D" if dimensionality == "1d" else "UpBlock2D"
-        unet_config = dict(
-            in_channels=image_channels * 2,
-            out_channels=image_channels,
-            layers_per_block=1,
-            block_out_channels=(base_channels, base_channels * 2, base_channels * 4),
-            down_block_types=(block, block, block),
-            up_block_types=(up_block, up_block, up_block),
-            norm_num_groups=math.gcd(base_channels, 32),
-        )
-        unet_config.update(unet_kwargs or {})
-        scheduler_config = dict(num_train_timesteps=timesteps)
-        scheduler_config.update(scheduler_kwargs or {})
-        self.ddpm = DDPM(
-            unet_cls(**unet_config),
-            DDPMScheduler(**scheduler_config),
-            image_channels=image_channels,
-            condition_channels=image_channels,
+        self.ddpm = build_conditional_ddpm(
+            image_channels, base_channels, timesteps, dimensionality, unet_kwargs, scheduler_kwargs
         )
 
     def forward(self, corrupted: torch.Tensor, clean: torch.Tensor) -> torch.Tensor:

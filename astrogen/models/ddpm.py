@@ -2,8 +2,10 @@
 # Reference: https://github.com/ML4SCI/DeepLense/blob/main/Difflense_Aleksandr_Duplinskii/Unconditional_diffusion/model_grav.py
 """Denoising diffusion for lens images (2D) and spectra (1D)."""
 
+import math
+
 import torch
-from diffusers import DDPMScheduler, UNet2DModel
+from diffusers import DDPMScheduler, UNet1DModel, UNet2DModel
 from torch import nn
 from torch.nn import functional
 
@@ -106,3 +108,42 @@ class DDPM(nn.Module):
             images = self.scheduler.step(predicted_noise, timestep, images).prev_sample
         self.unet.train(was_training)
         return images
+
+
+def build_conditional_ddpm(
+    image_channels: int,
+    base_channels: int,
+    timesteps: int,
+    dimensionality: str,
+    unet_kwargs: dict | None,
+    scheduler_kwargs: dict | None,
+) -> DDPM:
+    """Build a channel-conditioned :class:`DDPM` sharing family C's interface.
+
+    Used by :class:`~astrogen.tasks.super_resolution.SuperResolutionDDPM` and
+    :class:`~astrogen.tasks.denoising.DenoisingDDPM`, whose only difference is
+    what the condition channels are populated with.
+    """
+    if dimensionality not in ("1d", "2d"):
+        raise ValueError(f"dimensionality must be '1d' or '2d', got {dimensionality!r}")
+    unet_cls = UNet1DModel if dimensionality == "1d" else UNet2DModel
+    block = "DownBlock1D" if dimensionality == "1d" else "DownBlock2D"
+    up_block = "UpBlock1D" if dimensionality == "1d" else "UpBlock2D"
+    unet_config = dict(
+        in_channels=image_channels * 2,
+        out_channels=image_channels,
+        layers_per_block=1,
+        block_out_channels=(base_channels, base_channels * 2, base_channels * 4),
+        down_block_types=(block, block, block),
+        up_block_types=(up_block, up_block, up_block),
+        norm_num_groups=math.gcd(base_channels, 32),
+    )
+    unet_config.update(unet_kwargs or {})
+    scheduler_config = dict(num_train_timesteps=timesteps)
+    scheduler_config.update(scheduler_kwargs or {})
+    return DDPM(
+        unet_cls(**unet_config),
+        DDPMScheduler(**scheduler_config),
+        image_channels=image_channels,
+        condition_channels=image_channels,
+    )
