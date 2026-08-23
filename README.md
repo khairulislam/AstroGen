@@ -28,9 +28,10 @@ samples = model.sample(count=4, image_size=64)
 
 ## DDPM
 
-`DDPM` is a compact unconditional 2D denoising diffusion model for
-gravitational-lens images. It implements the [DDPM method](https://arxiv.org/abs/2006.11239)
-using [diffusers](https://github.com/huggingface/diffusers)' `UNet2DModel` and
+`DDPM` is a compact 2D denoising diffusion model for gravitational-lens
+images, unconditional or class-conditional. It implements the
+[DDPM method](https://arxiv.org/abs/2006.11239) using
+[diffusers](https://github.com/huggingface/diffusers)' `UNet2DModel` and
 `DDPMScheduler` directly, since this baseline needs no architecture beyond
 what diffusers already provides. Models whose paper customizes the denoiser
 or noise process keep their own implementation instead.
@@ -46,6 +47,16 @@ model = DDPM()
 lens_images = torch.rand(8, 1, 64, 64) * 2 - 1
 loss = model(lens_images)
 samples = model.sample(count=4, image_size=64)
+```
+
+Set `num_classes` to condition on discrete labels (e.g. `axion`/`CDM`/`no_sub`
+substructure type), passed as a `(batch,)` long tensor of class indices:
+
+```python
+model = DDPM(num_classes=3)
+labels = torch.randint(3, (8,))
+loss = model(lens_images, labels=labels)
+samples = model.sample(count=4, image_size=64, labels=torch.tensor([0, 1, 2, 2]))
 ```
 
 ## DeepLense VAE

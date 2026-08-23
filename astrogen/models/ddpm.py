@@ -11,12 +11,16 @@ from torch.nn import functional
 
 
 class DDPM(nn.Module):
-    """An unconditional DDPM baseline for normalized lens images.
+    """A DDPM baseline for normalized lens images, optionally class-conditional.
 
     Uses a vanilla diffusers U-Net and noise scheduler, since this baseline adds
     no architecture beyond what diffusers already provides. Images passed to
     :meth:`forward` must have shape ``(batch, image_channels, height, width)``
     and values normalized to approximately ``[-1, 1]``.
+
+    Set ``num_classes`` to condition on discrete labels (e.g. substructure type),
+    passed as a ``(batch,)`` long tensor of class indices to :meth:`forward` and
+    :meth:`sample`. Leave it ``None`` for unconditional generation.
     """
 
     def __init__(
@@ -24,6 +28,7 @@ class DDPM(nn.Module):
         image_channels: int = 1,
         base_channels: int = 32,
         timesteps: int = 1_000,
+        num_classes: int | None = None,
         unet_kwargs: dict | None = None,
         scheduler_kwargs: dict | None = None,
     ) -> None:
@@ -37,6 +42,7 @@ class DDPM(nn.Module):
             down_block_types=("DownBlock2D", "DownBlock2D", "DownBlock2D"),
             up_block_types=("UpBlock2D", "UpBlock2D", "UpBlock2D"),
             norm_num_groups=norm_num_groups,
+            num_class_embeds=num_classes,
         )
         unet_config.update(unet_kwargs or {})
         self.unet = UNet2DModel(**unet_config)
@@ -45,18 +51,20 @@ class DDPM(nn.Module):
         scheduler_config.update(scheduler_kwargs or {})
         self.scheduler = DDPMScheduler(**scheduler_config)
 
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
+    def forward(self, images: torch.Tensor, labels: torch.Tensor | None = None) -> torch.Tensor:
         """Return the DDPM training loss for a batch of lens images."""
         noise = torch.randn_like(images)
         timesteps = torch.randint(
             self.scheduler.config.num_train_timesteps, (images.shape[0],), device=images.device
         )
         noised_images = self.scheduler.add_noise(images, noise, timesteps)
-        predicted_noise = self.unet(noised_images, timesteps).sample
+        predicted_noise = self.unet(noised_images, timesteps, class_labels=labels).sample
         return functional.mse_loss(predicted_noise, noise)
 
     @torch.no_grad()
-    def sample(self, count: int, image_size: int = 64) -> torch.Tensor:
+    def sample(
+        self, count: int, image_size: int = 64, labels: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """Sample ``count`` generated single-channel lens images."""
         was_training = self.unet.training
         self.unet.eval()
@@ -64,8 +72,10 @@ class DDPM(nn.Module):
         images = torch.randn(
             count, self.unet.config.in_channels, image_size, image_size, device=device
         )
+        if labels is not None:
+            labels = labels.to(device)
         for timestep in self.scheduler.timesteps:
-            predicted_noise = self.unet(images, timestep).sample
+            predicted_noise = self.unet(images, timestep, class_labels=labels).sample
             images = self.scheduler.step(predicted_noise, timestep, images).prev_sample
         self.unet.train(was_training)
         return images
