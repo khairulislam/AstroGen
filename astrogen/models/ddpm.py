@@ -11,7 +11,7 @@ from torch.nn import functional
 
 
 class DDPM(nn.Module):
-    """A DDPM baseline for normalized lens images, optionally class-conditional.
+    """A DDPM baseline for normalized lens images, optionally conditional.
 
     Uses a vanilla diffusers U-Net and noise scheduler, since this baseline adds
     no architecture beyond what diffusers already provides. Images passed to
@@ -20,7 +20,11 @@ class DDPM(nn.Module):
 
     Set ``num_classes`` to condition on discrete labels (e.g. substructure type),
     passed as a ``(batch,)`` long tensor of class indices to :meth:`forward` and
-    :meth:`sample`. Leave it ``None`` for unconditional generation.
+    :meth:`sample`. Set ``condition_channels`` to condition on an image of the
+    same spatial size (e.g. an upsampled low-resolution image for
+    super-resolution), concatenated channel-wise, passed as ``condition`` to
+    :meth:`forward` and :meth:`sample`. Leave both ``None``/``0`` for
+    unconditional generation.
     """
 
     def __init__(
@@ -29,13 +33,16 @@ class DDPM(nn.Module):
         base_channels: int = 32,
         timesteps: int = 1_000,
         num_classes: int | None = None,
+        condition_channels: int = 0,
         unet_kwargs: dict | None = None,
         scheduler_kwargs: dict | None = None,
     ) -> None:
         super().__init__()
+        self.image_channels = image_channels
+        self.condition_channels = condition_channels
         norm_num_groups = math.gcd(base_channels, 32)
         unet_config = dict(
-            in_channels=image_channels,
+            in_channels=image_channels + condition_channels,
             out_channels=image_channels,
             layers_per_block=1,
             block_out_channels=(base_channels, base_channels * 2, base_channels * 4),
@@ -51,31 +58,47 @@ class DDPM(nn.Module):
         scheduler_config.update(scheduler_kwargs or {})
         self.scheduler = DDPMScheduler(**scheduler_config)
 
-    def forward(self, images: torch.Tensor, labels: torch.Tensor | None = None) -> torch.Tensor:
+    def _model_input(self, images: torch.Tensor, condition: torch.Tensor | None) -> torch.Tensor:
+        if self.condition_channels == 0:
+            return images
+        return torch.cat([images, condition], dim=1)
+
+    def forward(
+        self,
+        images: torch.Tensor,
+        labels: torch.Tensor | None = None,
+        condition: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Return the DDPM training loss for a batch of lens images."""
         noise = torch.randn_like(images)
         timesteps = torch.randint(
             self.scheduler.config.num_train_timesteps, (images.shape[0],), device=images.device
         )
         noised_images = self.scheduler.add_noise(images, noise, timesteps)
-        predicted_noise = self.unet(noised_images, timesteps, class_labels=labels).sample
+        model_input = self._model_input(noised_images, condition)
+        predicted_noise = self.unet(model_input, timesteps, class_labels=labels).sample
         return functional.mse_loss(predicted_noise, noise)
 
     @torch.no_grad()
     def sample(
-        self, count: int, image_size: int = 64, labels: torch.Tensor | None = None
+        self,
+        count: int,
+        image_size: int = 64,
+        labels: torch.Tensor | None = None,
+        condition: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Sample ``count`` generated single-channel lens images."""
         was_training = self.unet.training
         self.unet.eval()
         device = next(self.unet.parameters()).device
-        images = torch.randn(
-            count, self.unet.config.in_channels, image_size, image_size, device=device
-        )
+        images = torch.randn(count, self.image_channels, image_size, image_size, device=device)
         if labels is not None:
             labels = labels.to(device)
+        if condition is not None:
+            condition = condition.to(device)
         for timestep in self.scheduler.timesteps:
-            predicted_noise = self.unet(images, timestep, class_labels=labels).sample
+            model_input = self._model_input(images, condition)
+            predicted_noise = self.unet(model_input, timestep, class_labels=labels).sample
             images = self.scheduler.step(predicted_noise, timestep, images).prev_sample
         self.unet.train(was_training)
         return images

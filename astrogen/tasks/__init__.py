@@ -1,3 +1,7 @@
 """Task-specific meta-architectures."""
 
-__all__: list[str] = []
+from .super_resolution import SuperResolutionDDPM
+
+__all__ = [
+    "SuperResolutionDDPM",
+]

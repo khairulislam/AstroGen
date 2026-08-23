@@ -7,6 +7,7 @@ AstroGen is a lightweight library of generative-model cores for astronomy data.
 - [Usage](#usage)
 - [DDPM](#ddpm)
 - [DeepLense VAE](#deeplense-vae)
+- [Super-Resolution DDPM](#super-resolution-ddpm)
 - [Resources](#resources)
 - [Citations](#citations)
 
@@ -59,6 +60,18 @@ loss = model(lens_images, labels=labels)
 samples = model.sample(count=4, image_size=64, labels=torch.tensor([0, 1, 2, 2]))
 ```
 
+Set `condition_channels` to condition on an image of the same spatial size
+(e.g. a low-resolution image for super-resolution — see
+[Super-Resolution DDPM](#super-resolution-ddpm) below), concatenated
+channel-wise and passed as `condition`:
+
+```python
+model = DDPM(condition_channels=1)
+condition = torch.rand(8, 1, 64, 64) * 2 - 1
+loss = model(lens_images, condition=condition)
+samples = model.sample(count=4, image_size=64, condition=condition[:4])
+```
+
 ## DeepLense VAE
 
 `DeepLenseVAE` is a compact convolutional variational autoencoder based on
@@ -76,6 +89,29 @@ model = DeepLenseVAE(latent_dimension=128)
 lens_images = torch.rand(8, 1, 64, 64)
 loss = model.loss(lens_images)
 samples = model.sample(count=4)
+```
+
+## Super-Resolution DDPM
+
+`SuperResolutionDDPM` upscales a low-resolution lens image with a
+channel-conditioned `DDPM`, following the SR3 recipe: the low-resolution
+image is bilinearly upsampled to the target resolution and concatenated,
+channel-wise, with the noisy high-resolution image at every denoising step.
+It reuses `DDPM`'s `condition_channels` path rather than a dedicated
+architecture, since this baseline needs none beyond that.
+
+Low- and high-resolution images must have the same channel count and values
+normalized to approximately `[-1, 1]`.
+
+```python
+import torch
+from astrogen.tasks import SuperResolutionDDPM
+
+model = SuperResolutionDDPM()
+low_resolution = torch.rand(8, 1, 32, 32) * 2 - 1
+high_resolution = torch.rand(8, 1, 64, 64) * 2 - 1
+loss = model(low_resolution, high_resolution)
+samples = model.sample(low_resolution, image_size=64)
 ```
 
 ## Resources
@@ -104,5 +140,14 @@ Please cite the corresponding generative method and source authors linked in the
   author={Kingma, Diederik P. and Welling, Max},
   journal={arXiv preprint arXiv:1312.6114},
   year={2013}
+}
+```
+
+```bibtex
+@article{saharia2022image,
+  title={Image Super-Resolution via Iterative Refinement},
+  author={Saharia, Chitwan and Ho, Jonathan and Chan, William and Salimans, Tim and Fleet, David J. and Norouzi, Mohammad},
+  journal={IEEE Transactions on Pattern Analysis and Machine Intelligence},
+  year={2022}
 }
 ```
