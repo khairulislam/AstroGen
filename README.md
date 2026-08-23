@@ -20,57 +20,81 @@ and use it in a standard PyTorch training or inference loop.
 
 ```python
 import torch
+from diffusers import DDPMScheduler, UNet2DModel
 from astrogen.models import DDPM
 
-model = DDPM()
+unet = UNet2DModel(
+    in_channels=1, out_channels=1, layers_per_block=1,
+    block_out_channels=(32, 64, 128),
+    down_block_types=("DownBlock2D", "DownBlock2D", "DownBlock2D"),
+    up_block_types=("UpBlock2D", "UpBlock2D", "UpBlock2D"),
+    norm_num_groups=32,
+)
+model = DDPM(unet, DDPMScheduler(num_train_timesteps=1_000))
 lens_images = torch.rand(8, 1, 64, 64) * 2 - 1
 loss = model(lens_images)
-samples = model.sample(count=4, image_size=64)
+samples = model.sample(count=4, sample_size=64)
 ```
 
 ## DDPM
 
-`DDPM` is a compact 2D denoising diffusion model for gravitational-lens
-images, unconditional or class-conditional. It implements the
-[DDPM method](https://arxiv.org/abs/2006.11239) using
-[diffusers](https://github.com/huggingface/diffusers)' `UNet2DModel` and
-`DDPMScheduler` directly, since this baseline needs no architecture beyond
-what diffusers already provides. Models whose paper customizes the denoiser
-or noise process keep their own implementation instead.
+`DDPM` composes a diffusers U-Net and `DDPMScheduler` the way a diffusers
+pipeline does: you build the components with diffusers' own constructors
+and pass them in — `DDPM` adds only the training-loss and sampling-loop
+logic, no architecture beyond what diffusers already provides. Models whose
+paper customizes the denoiser or noise process keep their own implementation
+instead.
 
-It accepts normalized, single-channel images with shape
-`(batch, 1, height, width)` and values approximately in `[-1, 1]`.
+Whether a sample is a lens image (2D) or a spectrum (1D) follows the `unet`
+you pass in, not a separate flag: give it a `UNet2DModel` for images with
+shape `(batch, 1, height, width)`, or a `UNet1DModel` for spectra with shape
+`(batch, 1, length)`. Both expect values normalized to approximately
+`[-1, 1]`. Class conditioning (labels passed to `forward`/`sample`) is only
+supported for a `UNet2DModel` built with `num_class_embeds` set, since
+`UNet1DModel` has no class-embedding path.
 
 ```python
 import torch
+from diffusers import DDPMScheduler, UNet2DModel
 from astrogen.models import DDPM
 
-model = DDPM()
+unet = UNet2DModel(
+    in_channels=1, out_channels=1, layers_per_block=1,
+    block_out_channels=(32, 64, 128),
+    down_block_types=("DownBlock2D", "DownBlock2D", "DownBlock2D"),
+    up_block_types=("UpBlock2D", "UpBlock2D", "UpBlock2D"),
+    norm_num_groups=32,
+)
+model = DDPM(unet, DDPMScheduler(num_train_timesteps=1_000))
 lens_images = torch.rand(8, 1, 64, 64) * 2 - 1
 loss = model(lens_images)
-samples = model.sample(count=4, image_size=64)
+samples = model.sample(count=4, sample_size=64)
 ```
 
-Set `num_classes` to condition on discrete labels (e.g. `axion`/`CDM`/`no_sub`
-substructure type), passed as a `(batch,)` long tensor of class indices:
+Set `num_class_embeds` on the U-Net to condition on discrete labels (e.g.
+`axion`/`CDM`/`no_sub` substructure type), passed as a `(batch,)` long
+tensor of class indices:
 
 ```python
-model = DDPM(num_classes=3)
+unet = UNet2DModel(..., num_class_embeds=3)
+model = DDPM(unet, DDPMScheduler(num_train_timesteps=1_000))
 labels = torch.randint(3, (8,))
 loss = model(lens_images, labels=labels)
-samples = model.sample(count=4, image_size=64, labels=torch.tensor([0, 1, 2, 2]))
+samples = model.sample(count=4, sample_size=64, labels=torch.tensor([0, 1, 2, 2]))
 ```
 
-Set `condition_channels` to condition on an image of the same spatial size
-(e.g. a low-resolution image for super-resolution — see
+Set `condition_channels` on `DDPM` (and size the U-Net's `in_channels`
+accordingly) to condition on an image of the same spatial size (e.g. a
+low-resolution image for super-resolution — see
 [Super-Resolution DDPM](#super-resolution-ddpm) below), concatenated
 channel-wise and passed as `condition`:
 
 ```python
-model = DDPM(condition_channels=1)
+unet = UNet2DModel(in_channels=2, out_channels=1, ...)  # image + condition channels
+model = DDPM(unet, DDPMScheduler(num_train_timesteps=1_000), condition_channels=1)
 condition = torch.rand(8, 1, 64, 64) * 2 - 1
 loss = model(lens_images, condition=condition)
-samples = model.sample(count=4, image_size=64, condition=condition[:4])
+samples = model.sample(count=4, sample_size=64, condition=condition[:4])
 ```
 
 ## DeepLense VAE
@@ -117,14 +141,17 @@ samples = model.sample(low_resolution, image_size=64)
 
 ## Denoising DDPM
 
-`DenoisingDDPM` restores a corrupted lens image with a channel-conditioned
-`DDPM`, reusing the same conditioning path as
-[Super-Resolution DDPM](#super-resolution-ddpm): the corrupted image is
-concatenated, channel-wise, with the noisy clean image at every denoising
-step. Unlike super-resolution, corrupted and clean images share the same
-spatial size, so no resizing is applied.
+`DenoisingDDPM` restores a corrupted image or spectrum with a
+channel-conditioned `DDPM`, reusing the same conditioning path as
+[Super-Resolution DDPM](#super-resolution-ddpm): the corrupted sample is
+concatenated, channel-wise, with the noisy clean sample at every denoising
+step. Unlike super-resolution, corrupted and clean samples share the same
+spatial size, so no resizing is applied. Set `dimensionality="1d"` for
+spectral denoising — the direct 1D counterpart of image denoising, following
+[spectrai](https://github.com/conor-horgan/spectrai)'s `spectral_denoising`
+task — instead of the default `dimensionality="2d"` for lens images.
 
-Corrupted and clean images must have the same channel count and values
+Corrupted and clean samples must have the same channel count and values
 normalized to approximately `[-1, 1]`. Corruption (e.g. Gaussian noise plus
 blur, following family C's super-resolution recipe) is applied by the caller
 before training.
@@ -138,6 +165,16 @@ clean = torch.rand(8, 1, 64, 64) * 2 - 1
 corrupted = clean + 0.1 * torch.randn_like(clean)
 loss = model(corrupted, clean)
 samples = model.sample(corrupted)
+```
+
+For spectra:
+
+```python
+model = DenoisingDDPM(dimensionality="1d")
+clean_spectrum = torch.rand(8, 1, 500) * 2 - 1
+corrupted_spectrum = clean_spectrum + 0.1 * torch.randn_like(clean_spectrum)
+loss = model(corrupted_spectrum, clean_spectrum)
+samples = model.sample(corrupted_spectrum)
 ```
 
 ## Resources
