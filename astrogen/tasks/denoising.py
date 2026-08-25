@@ -15,13 +15,13 @@ from astrogen.models import build_conditional_ddpm
 class DenoisingDDPM(nn.Module):
     """Conditional DDPM that restores a corrupted image or spectrum.
 
-    Reuses :class:`DDPM`'s channel-concatenated conditioning path: the
+    Reuses ``DDPM``'s channel-concatenated conditioning path: the
     corrupted sample is concatenated, channel-wise, with the noisy clean
     sample at every denoising step. The corrupted and clean samples share the
     same spatial size, so no resizing is applied.
     Pass ``model_cls=UNet1DModel`` for spectra (shape ``(batch, channels,
     length)``); defaults to ``UNet2DModel`` for lens images (shape ``(batch,
-    channels, height, width)``), following :class:`DDPM`'s convention of
+    channels, height, width)``), following ``DDPM``'s convention of
     keying behavior off the U-Net's own type rather than a separate flag.
     Corrupted and clean samples must have the same channel count and values
     normalized to approximately ``[-1, 1]``; corruption (e.g. Gaussian noise

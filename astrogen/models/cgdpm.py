@@ -261,7 +261,7 @@ class CGDPM(nn.Module):
 
     Training images and conditions are expected in ``[-1, 1]``, the model
     space diffusers uses throughout (``VaeImageProcessor.normalize``,
-    ``DDPMScheduler(clip_sample_range=1.0)``); :meth:`sample` returns that
+    ``DDPMScheduler(clip_sample_range=1.0)``); ``sample`` returns that
     same space, leaving conversion to a display range to the caller. The
     model predicts Gaussian noise with an L1 objective.
 
@@ -269,7 +269,7 @@ class CGDPM(nn.Module):
     ``[0, 1]``: that source ends sampling with ``clamp(-1, 1)``, a shift to
     ``[0, 1]``, and a batch-wide min-max rescale, none of which is done here;
     and ``clip_sample``/``clip_sample_range`` are added, taking their names,
-    defaults, and semantics from ``DDPMScheduler`` — clamping predicted
+    defaults, and semantics from ``DDPMScheduler``, clamping predicted
     ``x_0`` each reverse step. With ``clip_sample=False`` the reverse step is
     the source's equation unchanged.
     """

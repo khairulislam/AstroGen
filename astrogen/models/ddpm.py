@@ -20,21 +20,21 @@ class DDPM(nn.Module):
     already provides. Whether a sample is an image or a spectrum follows
     ``unet``'s own type, not a separate flag.
 
-    Samples passed to :meth:`forward` must have shape ``(batch,
+    Samples passed to ``forward`` must have shape ``(batch,
     image_channels, height, width)`` for a 2D U-Net or ``(batch,
     image_channels, length)`` for a 1D U-Net, with values normalized to
     approximately ``[-1, 1]``. The training target follows ``scheduler``'s
     configured prediction type: noise, clean sample, or velocity.
 
-    Class conditioning (labels passed to :meth:`forward`/:meth:`sample`) is
+    Class conditioning (labels passed to ``forward``/``sample``) is
     only supported for a 2D U-Net built with ``num_class_embeds`` set, since
     ``UNet1DModel`` has no class-embedding path; passing labels otherwise
     raises rather than silently ignoring them. Set ``condition_channels``
     to condition on a sample of the same spatial size (e.g. an upsampled
     low-resolution image for super-resolution, or a corrupted spectrum for
-    denoising) — matched by ``unet``'s ``in_channels`` — concatenated
-    channel-wise and passed as ``condition`` to :meth:`forward` and
-    :meth:`sample`. Leave both ``None``/``0`` for unconditional generation.
+    denoising), matched by ``unet``'s ``in_channels`` and concatenated
+    channel-wise, then passed as ``condition`` to ``forward`` and
+    ``sample``. Leave both ``None``/``0`` for unconditional generation.
     """
 
     def __init__(
@@ -145,10 +145,10 @@ def build_conditional_ddpm(
     scheduler_kwargs: dict | None,
     model_cls: type[UNet1DModel] | type[UNet2DModel] = UNet2DModel,
 ) -> DDPM:
-    """Build a channel-conditioned :class:`DDPM` sharing family C's interface.
+    """Build a channel-conditioned ``DDPM`` sharing family C's interface.
 
-    Used by :class:`~astrogen.tasks.denoising.DenoisingDDPM`. Pass
-    ``model_cls=UNet1DModel`` for spectra; follows :class:`DDPM`'s convention
+    Used by ``DenoisingDDPM``. Pass
+    ``model_cls=UNet1DModel`` for spectra; follows ``DDPM``'s convention
     of keying behavior off the U-Net's own type rather than a separate
     dimensionality flag.
     """

@@ -17,8 +17,8 @@ class SuperResolutionDDPM(nn.Module):
     objective, and reverse process. The low-resolution image is bilinearly
     upsampled and injected into every residual block. Low- and
     high-resolution images must have the same channel count and values
-    normalized to ``[-1, 1]`` — diffusers' model space, and the domain
-    :class:`~astrogen.models.CGDPM` samples in. Astronomical data spanning a
+    normalized to ``[-1, 1]``, diffusers' model space and the domain
+    ``CGDPM`` samples in. Astronomical data spanning a
     wide dynamic range needs a stretch (e.g. ``asinh`` on sky-subtracted,
     noise-scaled pixels) before that mapping, not a bare min-max rescale;
     plain min-max leaves the signal narrower than the sampler's own noise

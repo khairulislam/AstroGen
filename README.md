@@ -71,7 +71,7 @@ samples = model.sample(count=4, sample_size=64, labels=torch.tensor([0, 1, 2, 2]
 
 Set `condition_channels` on `DDPM` (and size the U-Net's `in_channels`
 accordingly) to condition on an image of the same spatial size (e.g. a
-low-resolution image for super-resolution — see
+low-resolution image for super-resolution, see
 [Super-Resolution DDPM](#super-resolution-ddpm) below), concatenated
 channel-wise and passed as `condition`:
 
@@ -110,8 +110,8 @@ It customizes both the denoiser and the noise process, so it is implemented
 directly rather than as a diffusers subclass. Conditioning is not a single
 input-layer concatenation: the condition is resampled to each resolution and
 concatenated into every residual block, so the signal reaches all scales of
-the U-Net. Linear attention — attention in time linear in pixel count, from
-[Efficient Attention](https://arxiv.org/abs/1812.01243) — runs at every
+the U-Net. Linear attention, whose cost in time is linear in pixel count
+([Efficient Attention](https://arxiv.org/abs/1812.01243)), runs at every
 scale, gated by a zero-initialized
 [ReZero](https://arxiv.org/abs/2003.04887) residual so training starts from
 the plain convolutional path. The betas follow a cosine-shaped schedule
@@ -124,9 +124,8 @@ that same space. Because each block resamples it, the condition need not
 match the sample's spatial size. Two departures from the source, which works
 in `[0, 1]`, are documented on the class: no terminal shift-and-rescale of
 samples, and an optional `clip_sample` of predicted `x_0` per reverse step,
-named after `DDPMScheduler` (see
-[docs/diffusers-conventions.md](docs/diffusers-conventions.md)). With
-`clip_sample=False` the reverse step is the source's equation unchanged.
+named after `DDPMScheduler`. With `clip_sample=False` the reverse step is
+the source's equation unchanged.
 
 For super-resolution, prefer [Super-Resolution DDPM](#super-resolution-ddpm)
 below, which wraps `CGDPM` and handles the low-resolution conditioning.
@@ -206,14 +205,21 @@ samples = model.sample(corrupted_spectrum)
 
 ## Resources
 
-* [DeepLense](https://github.com/ML4SCI/DeepLense/tree/main): Explores cutting-edge Machine Learning techniques for the study of Strong Gravitational Lensing and Dark Matter Sub-structure, using both simulated and real lensing images.
-* [STAR](https://github.com/GuoCheng12/STAR/tree/main): The STAR (Super-Resolution for Astronomical Star Fields) dataset is a large-scale benchmark for developing field-level super-resolution models in astronomy.
-* [Spectrai](https://github.com/conor-horgan/spectrai): an open-source deep learning framework designed to facilitate the training of neural networks on spectral data and enable comparison between different methods.
-* [Hubble meets Webb](https://github.com/vkinakh/Hubble-meets-Webb): A study on the image-to-image translation problem for the prediction of future satellite Webb images from the available Hubble images.
+* [DeepLense](https://github.com/ML4SCI/DeepLense/tree/main): machine learning
+  for strong gravitational lensing and dark matter substructure, on both
+  simulated and real lensing images.
+* [STAR](https://github.com/GuoCheng12/STAR/tree/main): Super-Resolution for
+  Astronomical Star Fields, a benchmark for field-level super-resolution in
+  astronomy.
+* [Spectrai](https://github.com/conor-horgan/spectrai): a deep learning
+  framework for training networks on spectral data and comparing methods.
+* [Hubble meets Webb](https://github.com/vkinakh/Hubble-meets-Webb):
+  image-to-image translation that predicts Webb images from Hubble images.
 
 ## Citations
 
-Please cite the corresponding generative method and source authors linked in the scripts when using these implementations.
+Cite the generative method and the source authors linked in each
+implementation.
 
 ```bibtex
 @article{ho2020denoising,
