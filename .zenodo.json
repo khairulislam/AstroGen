@@ -1,0 +1,37 @@
+{
+  "title": "AstroGen: a lightweight library of generative-model cores for astronomy data",
+  "description": "<p>AstroGen is a lightweight library of generative-model cores for astronomy data. It provides reusable diffusion and variational model implementations (DDPM, class-conditional DDPM, VAE, super-resolution and denoising diffusion) for images, spectra, and simulation volumes, without owning a heavy data-processing stack. Conditioning is treated as a first-class model capability: class labels, physical parameters, and observations use a consistent interface, and building blocks are shared across 1D spectra, 2D images, and 3D volumes.</p>",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "MIT",
+  "creators": [
+    {
+      "name": "Islam, Md. Khairul",
+      "affiliation": "University of Virginia"
+    }
+  ],
+  "keywords": [
+    "generative models",
+    "diffusion models",
+    "DDPM",
+    "variational autoencoder",
+    "conditional generation",
+    "super-resolution",
+    "image denoising",
+    "astronomy",
+    "astrophysics",
+    "cosmology",
+    "strong gravitational lensing",
+    "spectroscopy",
+    "deep learning",
+    "PyTorch"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/khairulislam/AstroGen",
+      "relation": "isSupplementTo",
+      "resource_type": "software",
+      "scheme": "url"
+    }
+  ]
+}

@@ -2,6 +2,9 @@ CLAUDE.md
 AGENTS.md
 PLAN.md
 
+# downloaded example datasets (common cache, safe to delete)
+/data/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -23,11 +23,13 @@ class DDPM(nn.Module):
     Samples passed to :meth:`forward` must have shape ``(batch,
     image_channels, height, width)`` for a 2D U-Net or ``(batch,
     image_channels, length)`` for a 1D U-Net, with values normalized to
-    approximately ``[-1, 1]``.
+    approximately ``[-1, 1]``. The training target follows ``scheduler``'s
+    configured prediction type: noise, clean sample, or velocity.
 
     Class conditioning (labels passed to :meth:`forward`/:meth:`sample`) is
     only supported for a 2D U-Net built with ``num_class_embeds`` set, since
-    ``UNet1DModel`` has no class-embedding path. Set ``condition_channels``
+    ``UNet1DModel`` has no class-embedding path; passing labels otherwise
+    raises rather than silently ignoring them. Set ``condition_channels``
     to condition on a sample of the same spatial size (e.g. an upsampled
     low-resolution image for super-resolution, or a corrupted spectrum for
     denoising) — matched by ``unet``'s ``in_channels`` — concatenated
@@ -53,11 +55,19 @@ class DDPM(nn.Module):
             return images
         return torch.cat([images, condition], dim=1)
 
-    def _predict_noise(
+    def _predict(
         self, model_input: torch.Tensor, timesteps: torch.Tensor | int, labels: torch.Tensor | None
     ) -> torch.Tensor:
-        if isinstance(self.unet, UNet2DModel):
+        # Mirrors UNet2DModel.forward's own class_embedding-vs-class_labels check
+        # (unet_2d.py) rather than a separate flag: class_embedding only exists,
+        # and is non-None, on a UNet2DModel built with num_class_embeds set.
+        if getattr(self.unet, "class_embedding", None) is not None:
             return self.unet(model_input, timesteps, class_labels=labels).sample
+        if labels is not None:
+            raise ValueError(
+                "labels were provided but unet has no class-embedding path; "
+                "build it with num_class_embeds set to use class conditioning"
+            )
         return self.unet(model_input, timesteps).sample
 
     def forward(
@@ -73,8 +83,25 @@ class DDPM(nn.Module):
         )
         noised_images = self.scheduler.add_noise(images, noise, timesteps)
         model_input = self._model_input(noised_images, condition)
-        predicted_noise = self._predict_noise(model_input, timesteps, labels)
-        return functional.mse_loss(predicted_noise, noise)
+        prediction = self._predict(model_input, timesteps, labels)
+        if self.scheduler.config.prediction_type == "epsilon":
+            target = noise
+        elif self.scheduler.config.prediction_type == "sample":
+            alphas_cumprod = self.scheduler.alphas_cumprod.to(
+                device=images.device, dtype=images.dtype
+            )
+            alpha = alphas_cumprod[timesteps].reshape(
+                images.shape[0], *((1,) * (images.ndim - 1))
+            )
+            weights = alpha / (1 - alpha)
+            return (weights * functional.mse_loss(prediction, images, reduction="none")).mean()
+        elif self.scheduler.config.prediction_type == "v_prediction":
+            target = self.scheduler.get_velocity(images, noise, timesteps)
+        else:
+            raise ValueError(
+                f"unsupported scheduler prediction_type: {self.scheduler.config.prediction_type!r}"
+            )
+        return functional.mse_loss(prediction, target)
 
     @torch.no_grad()
     def sample(
@@ -104,8 +131,8 @@ class DDPM(nn.Module):
             condition = condition.to(device)
         for timestep in self.scheduler.timesteps:
             model_input = self._model_input(images, condition)
-            predicted_noise = self._predict_noise(model_input, timestep, labels)
-            images = self.scheduler.step(predicted_noise, timestep, images).prev_sample
+            prediction = self._predict(model_input, timestep, labels)
+            images = self.scheduler.step(prediction, timestep, images).prev_sample
         self.unet.train(was_training)
         return images
 
@@ -114,21 +141,22 @@ def build_conditional_ddpm(
     image_channels: int,
     base_channels: int,
     timesteps: int,
-    dimensionality: str,
     unet_kwargs: dict | None,
     scheduler_kwargs: dict | None,
+    model_cls: type[UNet1DModel] | type[UNet2DModel] = UNet2DModel,
 ) -> DDPM:
     """Build a channel-conditioned :class:`DDPM` sharing family C's interface.
 
-    Used by :class:`~astrogen.tasks.super_resolution.SuperResolutionDDPM` and
-    :class:`~astrogen.tasks.denoising.DenoisingDDPM`, whose only difference is
-    what the condition channels are populated with.
+    Used by :class:`~astrogen.tasks.denoising.DenoisingDDPM`. Pass
+    ``model_cls=UNet1DModel`` for spectra; follows :class:`DDPM`'s convention
+    of keying behavior off the U-Net's own type rather than a separate
+    dimensionality flag.
     """
-    if dimensionality not in ("1d", "2d"):
-        raise ValueError(f"dimensionality must be '1d' or '2d', got {dimensionality!r}")
-    unet_cls = UNet1DModel if dimensionality == "1d" else UNet2DModel
-    block = "DownBlock1D" if dimensionality == "1d" else "DownBlock2D"
-    up_block = "UpBlock1D" if dimensionality == "1d" else "UpBlock2D"
+    if model_cls not in (UNet1DModel, UNet2DModel):
+        raise ValueError(f"model_cls must be UNet1DModel or UNet2DModel, got {model_cls!r}")
+    is_1d = model_cls is UNet1DModel
+    block = "DownBlock1D" if is_1d else "DownBlock2D"
+    up_block = "UpBlock1D" if is_1d else "UpBlock2D"
     unet_config = dict(
         in_channels=image_channels * 2,
         out_channels=image_channels,
@@ -142,7 +170,7 @@ def build_conditional_ddpm(
     scheduler_config = dict(num_train_timesteps=timesteps)
     scheduler_config.update(scheduler_kwargs or {})
     return DDPM(
-        unet_cls(**unet_config),
+        model_cls(**unet_config),
         DDPMScheduler(**scheduler_config),
         image_channels=image_channels,
         condition_channels=image_channels,

@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "AstroGen: a lightweight library of generative-model cores for astronomy data"
+abstract: >-
+  AstroGen is a lightweight library of generative-model cores for astronomy
+  data. It provides reusable diffusion and variational implementations
+  (DDPM, class-conditional DDPM, VAE, super-resolution and denoising
+  diffusion) for images, spectra, and simulation volumes, without owning a
+  heavy data-processing stack. Conditioning is a first-class model
+  capability: class labels, physical parameters, and observations use a
+  consistent interface, and building blocks are shared across 1D spectra,
+  2D images, and 3D volumes.
+type: software
+authors:
+  - family-names: Islam
+    given-names: "Md. Khairul"
+    affiliation: University of Virginia
+repository-code: "https://github.com/khairulislam/AstroGen"
+url: "https://github.com/khairulislam/AstroGen"
+license: MIT
+# Fill in after the first Zenodo release:
+# doi: 10.5281/zenodo.XXXXXXX
+keywords:
+  - generative models
+  - diffusion models
+  - DDPM
+  - variational autoencoder
+  - conditional generation
+  - super-resolution
+  - image denoising
+  - astronomy
+  - astrophysics
+  - cosmology
+  - strong gravitational lensing
+  - spectroscopy
+  - deep learning
+  - PyTorch

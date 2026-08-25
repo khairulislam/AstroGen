@@ -6,6 +6,7 @@
 """Conditional DDPM denoising for gravitational-lens images and spectra."""
 
 import torch
+from diffusers import UNet1DModel, UNet2DModel
 from torch import nn
 
 from astrogen.models import build_conditional_ddpm
@@ -14,17 +15,17 @@ from astrogen.models import build_conditional_ddpm
 class DenoisingDDPM(nn.Module):
     """Conditional DDPM that restores a corrupted image or spectrum.
 
-    Reuses :class:`DDPM`'s channel-concatenated conditioning path from
-    :class:`~astrogen.tasks.super_resolution.SuperResolutionDDPM`: the
+    Reuses :class:`DDPM`'s channel-concatenated conditioning path: the
     corrupted sample is concatenated, channel-wise, with the noisy clean
-    sample at every denoising step. Unlike super-resolution, the corrupted
-    and clean samples share the same spatial size, so no resizing is applied.
-    Set ``dimensionality="1d"`` for spectra (shape ``(batch, channels,
-    length)``); defaults to ``"2d"`` for lens images (shape ``(batch,
-    channels, height, width)``). Corrupted and clean samples must have the
-    same channel count and values normalized to approximately ``[-1, 1]``;
-    corruption (e.g. Gaussian noise plus blur) is applied by the caller
-    before training.
+    sample at every denoising step. The corrupted and clean samples share the
+    same spatial size, so no resizing is applied.
+    Pass ``model_cls=UNet1DModel`` for spectra (shape ``(batch, channels,
+    length)``); defaults to ``UNet2DModel`` for lens images (shape ``(batch,
+    channels, height, width)``), following :class:`DDPM`'s convention of
+    keying behavior off the U-Net's own type rather than a separate flag.
+    Corrupted and clean samples must have the same channel count and values
+    normalized to approximately ``[-1, 1]``; corruption (e.g. Gaussian noise
+    plus blur) is applied by the caller before training.
     """
 
     def __init__(
@@ -32,13 +33,13 @@ class DenoisingDDPM(nn.Module):
         image_channels: int = 1,
         base_channels: int = 32,
         timesteps: int = 1_000,
-        dimensionality: str = "2d",
         unet_kwargs: dict | None = None,
         scheduler_kwargs: dict | None = None,
+        model_cls: type[UNet1DModel] | type[UNet2DModel] = UNet2DModel,
     ) -> None:
         super().__init__()
         self.ddpm = build_conditional_ddpm(
-            image_channels, base_channels, timesteps, dimensionality, unet_kwargs, scheduler_kwargs
+            image_channels, base_channels, timesteps, unet_kwargs, scheduler_kwargs, model_cls=model_cls
         )
 
     def forward(self, corrupted: torch.Tensor, clean: torch.Tensor) -> torch.Tensor:

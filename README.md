@@ -7,6 +7,7 @@ AstroGen is a lightweight library of generative-model cores for astronomy data.
 - [Usage](#usage)
 - [DDPM](#ddpm)
 - [DeepLense VAE](#deeplense-vae)
+- [CGDPM](#cgdpm)
 - [Super-Resolution DDPM](#super-resolution-ddpm)
 - [Denoising DDPM](#denoising-ddpm)
 - [Resources](#resources)
@@ -16,42 +17,20 @@ AstroGen is a lightweight library of generative-model cores for astronomy data.
 
 AstroGen uses ordinary PyTorch modules. Import an implementation directly from
 its documented package, provide the tensor contract described by that model,
-and use it in a standard PyTorch training or inference loop.
-
-```python
-import torch
-from diffusers import DDPMScheduler, UNet2DModel
-from astrogen.models import DDPM
-
-unet = UNet2DModel(
-    in_channels=1, out_channels=1, layers_per_block=1,
-    block_out_channels=(32, 64, 128),
-    down_block_types=("DownBlock2D", "DownBlock2D", "DownBlock2D"),
-    up_block_types=("UpBlock2D", "UpBlock2D", "UpBlock2D"),
-    norm_num_groups=32,
-)
-model = DDPM(unet, DDPMScheduler(num_train_timesteps=1_000))
-lens_images = torch.rand(8, 1, 64, 64) * 2 - 1
-loss = model(lens_images)
-samples = model.sample(count=4, sample_size=64)
-```
+and use it in a standard PyTorch training or inference loop. Each section
+below gives that contract and a minimal example.
 
 ## DDPM
 
-`DDPM` composes a diffusers U-Net and `DDPMScheduler` the way a diffusers
-pipeline does: you build the components with diffusers' own constructors
-and pass them in — `DDPM` adds only the training-loss and sampling-loop
-logic, no architecture beyond what diffusers already provides. Models whose
-paper customizes the denoiser or noise process keep their own implementation
-instead.
+[DDPM](https://arxiv.org/abs/2006.11239) learns to reverse a fixed noising
+process, turning noise back into data one step at a time. `DDPM` implements
+only that training and sampling logic, reusing a standard denoiser and
+schedule from diffusers rather than a custom architecture.
 
-Whether a sample is a lens image (2D) or a spectrum (1D) follows the `unet`
-you pass in, not a separate flag: give it a `UNet2DModel` for images with
-shape `(batch, 1, height, width)`, or a `UNet1DModel` for spectra with shape
-`(batch, 1, length)`. Both expect values normalized to approximately
-`[-1, 1]`. Class conditioning (labels passed to `forward`/`sample`) is only
-supported for a `UNet2DModel` built with `num_class_embeds` set, since
-`UNet1DModel` has no class-embedding path.
+Dimensionality follows the `unet` rather than a separate flag: a
+`UNet2DModel` for images shaped `(batch, 1, height, width)`, or a
+`UNet1DModel` for spectra shaped `(batch, 1, length)`. Both expect values
+normalized to approximately `[-1, 1]`.
 
 ```python
 import torch
@@ -71,9 +50,10 @@ loss = model(lens_images)
 samples = model.sample(count=4, sample_size=64)
 ```
 
-Set `num_class_embeds` on the U-Net to condition on discrete labels (e.g.
-`axion`/`CDM`/`no_sub` substructure type), passed as a `(batch,)` long
-tensor of class indices:
+Discrete labels (e.g. `axion`/`CDM`/`no_sub` substructure type) enter through
+the U-Net's class embedding, so they need a `UNet2DModel` built with
+`num_class_embeds`; `UNet1DModel` has no such path and raises instead of
+silently ignoring the labels:
 
 ```python
 unet = UNet2DModel(..., num_class_embeds=3)
@@ -99,9 +79,9 @@ samples = model.sample(count=4, sample_size=64, condition=condition[:4])
 
 ## DeepLense VAE
 
-`DeepLenseVAE` is a compact convolutional variational autoencoder based on
-DeepLense's lens-image VAE. Unlike the DDPM, it learns a Gaussian latent space
-and generates images in a single decoder pass.
+`DeepLenseVAE` is a compact convolutional [variational autoencoder](https://arxiv.org/abs/1312.6114)
+based on DeepLense's lens-image VAE. Unlike the DDPM, it learns a Gaussian
+latent space and generates images in a single decoder pass.
 
 It accepts single-channel images with shape `(batch, 1, 64, 64)` and values in
 `[0, 1]`.
@@ -116,17 +96,58 @@ loss = model.loss(lens_images)
 samples = model.sample(count=4)
 ```
 
+## CGDPM
+
+`CGDPM` is the conditional Gaussian diffusion model of the
+[DeepLense super-resolution reference](https://github.com/ML4SCI/DeepLense/blob/main/Super_Resolution_Atal_Gupta/models/cgdpm.ipynb).
+It customizes both the denoiser and the noise process, so it is implemented
+directly rather than as a diffusers subclass. Conditioning is not a single
+input-layer concatenation: the condition is resampled to each resolution and
+concatenated into every residual block, so the signal reaches all scales of
+the U-Net. Linear attention — attention in time linear in pixel count, from
+[Efficient Attention](https://arxiv.org/abs/1812.01243) — runs at every
+scale, gated by a zero-initialized
+[ReZero](https://arxiv.org/abs/2003.04887) residual so training starts from
+the plain convolutional path. The betas follow a cosine-shaped schedule
+([improved DDPM](https://arxiv.org/abs/2102.09672)), which destroys
+information more slowly than a linear one, and the noise-prediction loss is
+L1 rather than L2.
+
+Images and condition are single tensors in `[-1, 1]`, and `sample` returns
+that same space. Because each block resamples it, the condition need not
+match the sample's spatial size. Two departures from the source, which works
+in `[0, 1]`, are documented on the class: no terminal shift-and-rescale of
+samples, and an optional `clip_sample` of predicted `x_0` per reverse step,
+named after `DDPMScheduler` (see
+[docs/diffusers-conventions.md](docs/diffusers-conventions.md)). With
+`clip_sample=False` the reverse step is the source's equation unchanged.
+
+For super-resolution, prefer [Super-Resolution DDPM](#super-resolution-ddpm)
+below, which wraps `CGDPM` and handles the low-resolution conditioning.
+
+```python
+import torch
+from astrogen.models import CGDPM
+
+model = CGDPM(image_channels=1, condition_channels=1)
+lens_images = torch.rand(8, 1, 64, 64) * 2 - 1
+condition = torch.rand(8, 1, 64, 64) * 2 - 1
+loss = model(lens_images, condition)
+samples = model.sample(count=4, sample_size=64, condition=condition[:4])
+```
+
 ## Super-Resolution DDPM
 
-`SuperResolutionDDPM` upscales a low-resolution lens image with a
-channel-conditioned `DDPM`, following the SR3 recipe: the low-resolution
-image is bilinearly upsampled to the target resolution and concatenated,
-channel-wise, with the noisy high-resolution image at every denoising step.
-It reuses `DDPM`'s `condition_channels` path rather than a dedicated
-architecture, since this baseline needs none beyond that.
+`SuperResolutionDDPM` conditions the reverse process on a low-resolution
+image, the [SR3](https://arxiv.org/abs/2104.07636) formulation of
+super-resolution as conditional diffusion. It wraps [CGDPM](#cgdpm),
+bilinearly upsampling the low-resolution image to the target size and passing
+it as that model's condition.
 
-Low- and high-resolution images must have the same channel count and values
-normalized to approximately `[-1, 1]`.
+Low- and high-resolution images must share a channel count and be normalized
+to `[-1, 1]`. Wide-dynamic-range astronomical data needs a stretch such as
+`asinh` before that mapping, not a bare min-max rescale; see
+[examples/train_super_resolution_star.ipynb](examples/train_super_resolution_star.ipynb).
 
 ```python
 import torch
@@ -141,20 +162,18 @@ samples = model.sample(low_resolution, image_size=64)
 
 ## Denoising DDPM
 
-`DenoisingDDPM` restores a corrupted image or spectrum with a
-channel-conditioned `DDPM`, reusing the same conditioning path as
-[Super-Resolution DDPM](#super-resolution-ddpm): the corrupted sample is
+`DenoisingDDPM` restores a corrupted sample with the same channel-conditioned
+[DDPM](https://arxiv.org/abs/2006.11239) path: the corrupted sample is
 concatenated, channel-wise, with the noisy clean sample at every denoising
-step. Unlike super-resolution, corrupted and clean samples share the same
-spatial size, so no resizing is applied. Set `dimensionality="1d"` for
-spectral denoising — the direct 1D counterpart of image denoising, following
-[spectrai](https://github.com/conor-horgan/spectrai)'s `spectral_denoising`
-task — instead of the default `dimensionality="2d"` for lens images.
+step. Corruption is a degradation rather than a resolution change, so the two
+share a spatial size and no resizing applies.
 
-Corrupted and clean samples must have the same channel count and values
-normalized to approximately `[-1, 1]`. Corruption (e.g. Gaussian noise plus
-blur, following family C's super-resolution recipe) is applied by the caller
-before training.
+Corrupted and clean samples must share a channel count and be normalized to
+approximately `[-1, 1]`; the caller applies the corruption (e.g. Gaussian
+noise plus blur) before training. As with `DDPM`, dimensionality follows the
+U-Net: pass `model_cls=UNet1DModel` for spectral denoising, the 1D
+counterpart following [spectrai](https://github.com/conor-horgan/spectrai)'s
+`spectral_denoising` task.
 
 ```python
 import torch
@@ -170,7 +189,9 @@ samples = model.sample(corrupted)
 For spectra:
 
 ```python
-model = DenoisingDDPM(dimensionality="1d")
+from diffusers import UNet1DModel
+
+model = DenoisingDDPM(model_cls=UNet1DModel)
 clean_spectrum = torch.rand(8, 1, 500) * 2 - 1
 corrupted_spectrum = clean_spectrum + 0.1 * torch.randn_like(clean_spectrum)
 loss = model(corrupted_spectrum, clean_spectrum)
@@ -203,6 +224,15 @@ Please cite the corresponding generative method and source authors linked in the
   author={Kingma, Diederik P. and Welling, Max},
   journal={arXiv preprint arXiv:1312.6114},
   year={2013}
+}
+```
+
+```bibtex
+@inproceedings{nichol2021improved,
+  title={Improved Denoising Diffusion Probabilistic Models},
+  author={Nichol, Alexander Quinn and Dhariwal, Prafulla},
+  booktitle={International Conference on Machine Learning},
+  year={2021}
 }
 ```
 
