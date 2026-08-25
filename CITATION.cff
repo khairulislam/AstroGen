@@ -18,8 +18,7 @@ authors:
 repository-code: "https://github.com/khairulislam/AstroGen"
 url: "https://github.com/khairulislam/AstroGen"
 license: MIT
-# Fill in after the first Zenodo release:
-# doi: 10.5281/zenodo.XXXXXXX
+doi: 10.5281/zenodo.22101931
 keywords:
   - generative models
   - diffusion models
