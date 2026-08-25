@@ -1,4 +1,4 @@
-# Paper: https://arxiv.org/abs/1312.6114
+# Paper: https://arxiv.org/abs/1312.6114 (VAE), https://openreview.net/forum?id=Sy2fzU9gl (beta-VAE)
 # Reference: https://github.com/ML4SCI/DeepLense/blob/main/DeepLense_Diffusion_Rishi/models/vae.py
 """Convolutional variational autoencoders for astronomy images."""
 
