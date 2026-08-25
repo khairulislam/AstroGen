@@ -15,6 +15,12 @@ AstroGen is a lightweight library of generative-model cores for astronomy data.
 
 ## Usage
 
+Install AstroGen locally, editable, from the repository root:
+
+```bash
+pip install -e .
+```
+
 AstroGen uses ordinary PyTorch modules. Import an implementation directly from
 its documented package, provide the tensor contract described by that model,
 and use it in a standard PyTorch training or inference loop. Each section

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "astrogen"
+version = "0.1.0"
+description = "A lightweight library of generative-model cores for astronomy data."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "Md. Khairul Islam" }]
+dependencies = [
+    "torch",
+    "diffusers",
+]
+
+[project.urls]
+Homepage = "https://github.com/khairulislam/AstroGen"
+
+[tool.setuptools.packages.find]
+include = ["astrogen*"]
