@@ -67,6 +67,21 @@ loss = model(lens_images, labels=labels)
 samples = model.sample(count=4, sample_size=64, labels=torch.tensor([0, 1, 2, 2]))
 ```
 
+Variable-conditional (continuous physical lens parameters, e.g. mass,
+orientation, redshift), via [`ParameterEncoder`](astrogen/layers/parameter_encoder.py):
+
+```python
+from astrogen.layers import ParameterEncoder
+
+base_channels = 32
+unet = UNet2DModel(..., block_out_channels=(base_channels, base_channels * 2, base_channels * 4), class_embed_type="identity")
+parameter_encoder = ParameterEncoder(num_parameters=3, embedding_dim=base_channels * 4)
+model = DDPM(unet, DDPMScheduler(num_train_timesteps=1_000), parameter_encoder=parameter_encoder)
+parameters = torch.stack([mass, orientation, redshift], dim=-1)
+loss = model(lens_images, labels=parameters)
+samples = model.sample(count=4, sample_size=64, labels=parameters[:4])
+```
+
 Channel-conditional (e.g. a low-resolution image for super-resolution, see
 [Super-Resolution DDPM](#super-resolution-ddpm) below):
 

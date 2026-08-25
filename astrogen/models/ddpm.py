@@ -35,6 +35,15 @@ class DDPM(nn.Module):
     denoising), matched by ``unet``'s ``in_channels`` and concatenated
     channel-wise, then passed as ``condition`` to ``forward`` and
     ``sample``. Leave both ``None``/``0`` for unconditional generation.
+
+    Continuous physical-parameter conditioning (e.g. lens mass, orientation,
+    redshift) reuses the same ``labels`` argument: build the U-Net with
+    ``class_embed_type="identity"`` and pass a ``parameter_encoder`` (e.g.
+    :class:`astrogen.layers.ParameterEncoder`) whose output dimension matches
+    the U-Net's ``time_embed_dim`` (``block_out_channels[0] * 4`` by default).
+    ``labels`` is then the raw parameter tensor (shape ``(batch,
+    num_parameters)``); it is passed through ``parameter_encoder`` before
+    reaching the U-Net's class-embedding path.
     """
 
     def __init__(
@@ -43,12 +52,14 @@ class DDPM(nn.Module):
         scheduler: DDPMScheduler,
         image_channels: int = 1,
         condition_channels: int = 0,
+        parameter_encoder: nn.Module | None = None,
     ) -> None:
         super().__init__()
         self.unet = unet
         self.scheduler = scheduler
         self.image_channels = image_channels
         self.condition_channels = condition_channels
+        self.parameter_encoder = parameter_encoder
 
     def _model_input(self, images: torch.Tensor, condition: torch.Tensor | None) -> torch.Tensor:
         if self.condition_channels == 0:
@@ -62,6 +73,8 @@ class DDPM(nn.Module):
         # (unet_2d.py) rather than a separate flag: class_embedding only exists,
         # and is non-None, on a UNet2DModel built with num_class_embeds set.
         if getattr(self.unet, "class_embedding", None) is not None:
+            if self.parameter_encoder is not None and labels is not None:
+                labels = self.parameter_encoder(labels)
             return self.unet(model_input, timesteps, class_labels=labels).sample
         if labels is not None:
             raise ValueError(

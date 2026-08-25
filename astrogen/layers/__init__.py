@@ -1,3 +1,5 @@
 """Shared neural-network layers."""
 
-__all__: list[str] = []
+from .parameter_encoder import ParameterEncoder
+
+__all__ = ["ParameterEncoder"]
