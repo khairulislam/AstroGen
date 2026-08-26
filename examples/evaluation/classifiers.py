@@ -41,8 +41,8 @@ class ImageClassifier(nn.Module):
     input, and at this dataset's much smaller resolution discards the same
     low-contrast substructure detail the classifier needs to separate,
     before a single residual block sees it (measured: 61% best accuracy,
-    repeatedly collapsing back to chance). A plain stride-1 stem — the usual
-    fix for ResNets on small images (as in CIFAR-ResNet) — reaches 82%.
+    repeatedly collapsing back to chance). A plain stride-1 stem, the usual
+    fix for ResNets on small images (as in CIFAR-ResNet), reaches 82%.
     """
 
     def __init__(self, image_channels: int = 1, num_classes: int = 3, base_channels: int = 64) -> None:
