@@ -141,6 +141,13 @@ samples = model.sample(count=4, sample_size=64, condition=condition[:4])
 
 ## Super-Resolution DDPM
 
+![Low-resolution, high-resolution, and super-resolution cosmological simulations](./assets/0505_supersims_3sims.jpg)
+
+*Using deep learning, the researchers could upscale the low-res model at the
+left to the super-res model at right — capturing the same detail as a
+conventional high-res model (center) while using much fewer computational
+resources. Image credit: Y. Li et al/PNAS 2021.*
+
 [`SuperResolutionDDPM`](astrogen/tasks/super_resolution.py) conditions the
 reverse process on a low-resolution image, the
 [SR3](https://arxiv.org/abs/2104.07636) formulation of super-resolution as
