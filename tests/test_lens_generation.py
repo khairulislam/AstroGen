@@ -83,9 +83,15 @@ def test_spectra_ddpm_trains_and_samples() -> None:
         out_channels=1,
         layers_per_block=1,
         block_out_channels=(8, 16, 32),
-        down_block_types=("DownBlock1D", "DownBlock1D", "DownBlock1D"),
-        up_block_types=("UpBlock1D", "UpBlock1D", "UpBlock1D"),
+        down_block_types=("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
+        up_block_types=("UpResnetBlock1D", "UpResnetBlock1D"),
+        out_block_type="OutConv1DBlock",
         norm_num_groups=8,
+        use_timestep_embedding=True,
+        time_embedding_type="positional",
+        flip_sin_to_cos=False,
+        freq_shift=1,
+        act_fn="mish",
     )
     model = DDPM(unet, DDPMScheduler(num_train_timesteps=3))
     spectra = torch.randn(2, 1, 64).clamp(-1, 1)

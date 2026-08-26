@@ -14,6 +14,7 @@ preprocessing, and experiment infrastructure to the caller.
 - [CGDPM](#cgdpm)
 - [Super-Resolution DDPM](#super-resolution-ddpm)
 - [Denoising DDPM](#denoising-ddpm)
+- [Evaluation](#evaluation)
 - [Resources](#resources)
 - [Citations](#citations)
 
@@ -146,7 +147,7 @@ reverse process on a low-resolution image, the
 conditional diffusion. It wraps [CGDPM](#cgdpm), bilinearly upsampling the
 low-resolution image and passing it as that model's condition; see the class
 docstring for the tensor contract and
-[examples/train_super_resolution_cgdpm_star.ipynb](examples/train_super_resolution_cgdpm_star.ipynb)
+[examples/cgdpm_super_resolution.ipynb](examples/cgdpm_super_resolution.ipynb)
 for a full training example.
 
 ```python

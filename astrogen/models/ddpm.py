@@ -164,21 +164,45 @@ def build_conditional_ddpm(
     ``model_cls=UNet1DModel`` for spectra; follows ``DDPM``'s convention
     of keying behavior off the U-Net's own type rather than a separate
     dimensionality flag.
+
+    ``UNet1DModel``'s own default blocks (``DownBlock1D``/``UpBlock1D``) end
+    in an activation on the very last output channel, which biases the
+    noise prediction away from zero and prevents training from converging.
+    diffusers' own non-audio use of ``UNet1DModel`` (its RL "temporal U-Net",
+    ``scripts/convert_models_diffuser_to_diffusers.py``) avoids this with
+    ``DownResnetBlock1D``/``UpResnetBlock1D`` plus an explicit
+    ``out_block_type="OutConv1DBlock"``; this factory follows that recipe
+    instead.
     """
     if model_cls not in (UNet1DModel, UNet2DModel):
         raise ValueError(f"model_cls must be UNet1DModel or UNet2DModel, got {model_cls!r}")
-    is_1d = model_cls is UNet1DModel
-    block = "DownBlock1D" if is_1d else "DownBlock2D"
-    up_block = "UpBlock1D" if is_1d else "UpBlock2D"
-    unet_config = dict(
-        in_channels=image_channels * 2,
-        out_channels=image_channels,
-        layers_per_block=1,
-        block_out_channels=(base_channels, base_channels * 2, base_channels * 4),
-        down_block_types=(block, block, block),
-        up_block_types=(up_block, up_block, up_block),
-        norm_num_groups=math.gcd(base_channels, 32),
-    )
+    norm_num_groups = math.gcd(base_channels, 32)
+    if model_cls is UNet1DModel:
+        unet_config = dict(
+            in_channels=image_channels * 2,
+            out_channels=image_channels,
+            layers_per_block=1,
+            block_out_channels=(base_channels, base_channels * 2, base_channels * 4),
+            down_block_types=("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
+            up_block_types=("UpResnetBlock1D", "UpResnetBlock1D"),
+            out_block_type="OutConv1DBlock",
+            norm_num_groups=norm_num_groups,
+            use_timestep_embedding=True,
+            time_embedding_type="positional",
+            flip_sin_to_cos=False,
+            freq_shift=1,
+            act_fn="mish",
+        )
+    else:
+        unet_config = dict(
+            in_channels=image_channels * 2,
+            out_channels=image_channels,
+            layers_per_block=1,
+            block_out_channels=(base_channels, base_channels * 2, base_channels * 4),
+            down_block_types=("DownBlock2D", "DownBlock2D", "DownBlock2D"),
+            up_block_types=("UpBlock2D", "UpBlock2D", "UpBlock2D"),
+            norm_num_groups=norm_num_groups,
+        )
     unet_config.update(unet_kwargs or {})
     scheduler_config = dict(num_train_timesteps=timesteps)
     scheduler_config.update(scheduler_kwargs or {})
